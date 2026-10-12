@@ -268,7 +268,9 @@ def count_v26_tells(text: str) -> tuple[int, dict]:
     n = len(_ORDINAL_ENUM.findall(text))
     if n >= ORDINAL_ENUM_MIN:
         per["서수열거(C-1)"] = n
-        total += n
+        # 기여는 역치값으로 캡 — 열거가 길다고 heavy 로 밀어 올리지 않는다.
+        # "열거로 짠 글이면 진단을 거친다"까지만 신호로 쓴다.
+        total += ORDINAL_ENUM_MIN
     return total, per
 
 

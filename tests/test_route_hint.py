@@ -180,6 +180,17 @@ class RouteCoverageTests(unittest.TestCase):
         self.assertEqual(per.get("서수열거(C-1)"), 3)
         self.assertEqual(per.get("결산변이(D-1)"), 1)
 
+    def test_long_enumeration_contribution_is_capped(self) -> None:
+        """서수 8개 + risk high 가 열거만으로 heavy 가 되면 안 된다."""
+        text = " ".join(f"{o}, 항목이 있다." for o in
+                        ("첫째", "둘째", "셋째", "넷째", "다섯째",
+                         "여섯 번째", "일곱 번째", "여덟 번째"))
+        total, per = PREP.count_v26_tells(text)
+        self.assertEqual(total, PREP.ORDINAL_ENUM_MIN)
+        obj = _metrics_stub(risk_band="high", char_count=len(text))
+        obj["_text"] = text
+        self.assertEqual(PREP.compute_route_hint(obj)["route_hint"], "standard")
+
     def test_two_ordinals_not_counted(self) -> None:
         """C-1 은 기본 보존 — 2항 열거는 사람 글에도 흔해 세지 않는다."""
         _, per = PREP.count_v26_tells("첫째, 값이 싸다. 둘째, 가깝다.")
