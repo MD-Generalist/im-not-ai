@@ -114,7 +114,10 @@ class SkillRootDerivationTests(unittest.TestCase):
     # 고정 깊이는 레이아웃이 바뀌면 조용히 엉뚱한 곳을 가리킨다.
     DERIVE = (
         'd="$(cd -P "$CLAUDE_SKILL_DIR" && pwd)"; '
-        'while [ "$d" != / ] && [ ! -d "$d/.claude-plugin" ]; do d="$(dirname "$d")"; done; '
+        'while [ "$d" != / ] && [ ! -d "$d/.claude-plugin" ] '
+        '&& [ ! -f "$d/scripts/prepare_monolith_input.py" ]; do d="$(dirname "$d")"; done; '
+        '[ "$d" = / ] && s="$(dirname "$(cd -P "${CLAUDE_SKILL_DIR}" && pwd)")/humanize-korean" '
+        '&& [ -f "$s/scripts/prepare_monolith_input.py" ] && d="$s"; '
         'echo "$d"'
     )
 
@@ -154,6 +157,44 @@ class SkillRootDerivationTests(unittest.TestCase):
                 Path(got).resolve(), _ROOT.resolve(),
                 f"심링크 설치에서 유도 실패: {got} (cd -P 누락 의심)",
             )
+
+    @posix_shell_only
+    def test_derivation_works_for_copy_install(self) -> None:
+        """`install.sh --copy` — 조상에 마커가 없고 스크립트가 스킬 안에 복사된 레이아웃 (#144).
+
+        마커만 찾던 유도는 `/` 까지 올라가 SKILL_ROOT 가 빈 루트가 됐다.
+        """
+        with tempfile.TemporaryDirectory() as td:
+            skill = Path(td) / "home" / ".claude" / "skills" / "humanize-korean"
+            (skill / "scripts").mkdir(parents=True)
+            (skill / "scripts" / "prepare_monolith_input.py").touch()
+            got = self._derive(skill)
+            self.assertEqual(Path(got).resolve(), skill.resolve(),
+                             f"--copy 설치에서 유도 실패: {got}")
+
+    @posix_shell_only
+    def test_derivation_works_for_copy_install_wrapper_skill(self) -> None:
+        """복사 설치에서 /humanize 등 래퍼 스킬로 진입 — 형제 humanize-korean/ 폴백."""
+        with tempfile.TemporaryDirectory() as td:
+            skills = Path(td) / "home" / ".claude" / "skills"
+            core = skills / "humanize-korean"
+            (core / "scripts").mkdir(parents=True)
+            (core / "scripts" / "prepare_monolith_input.py").touch()
+            for w in ("humanize", "humanize-scan", "humanize-redo"):
+                (skills / w).mkdir()
+                got = self._derive(skills / w)
+                self.assertEqual(Path(got).resolve(), core.resolve(),
+                                 f"--copy 래퍼 {w} 에서 유도 실패: {got}")
+
+    def test_skill_md_derivation_matches_tested_loop(self) -> None:
+        """테스트가 검증하는 유도 조건이 SKILL.md 본문과 어긋나지 않게 고정한다."""
+        skill = (_ROOT / "skills" / "humanize-korean" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        for cond in ('[ ! -d "$d/.claude-plugin" ]',
+                     '[ ! -f "$d/scripts/prepare_monolith_input.py" ]',
+                     '/humanize-korean" && [ -f "$s/scripts/prepare_monolith_input.py" ] && d="$s"'):
+            self.assertIn(cond, skill, f"SKILL.md 유도 조건 누락: {cond}")
 
     def test_skill_md_uses_absolute_script_paths(self) -> None:
         """SKILL.md 에 cwd 상대 `python3 scripts/` 호출이 남아 있으면 안 된다."""
