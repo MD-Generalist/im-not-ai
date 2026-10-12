@@ -144,11 +144,16 @@ ok "복사 설치 — references 실체화 확인"
 # #144 — 복사 설치는 조상에 .claude-plugin/ 이 없다. SKILL.md 유도를 그대로 돌려
 # 설치 트리 안의 scripts/ 에 닿는지, 그 스크립트가 저장소 없이 실행되는지 본다.
 SKILL_DIR="$CLAUDE_HOME/skills/humanize-korean"
-DERIVE_LINE="$(grep -m1 'while \[ "\$d" != / \]' "$REPO/skills/humanize-korean/SKILL.md")"
-[ -n "$DERIVE_LINE" ] || fail "SKILL.md 에서 SKILL_ROOT 유도 줄을 찾지 못함"
-COPY_ROOT="$(CLAUDE_SKILL_DIR="$SKILL_DIR" bash -c "d=\"\$(cd -P \"\$CLAUDE_SKILL_DIR\" && pwd)\"; ${DERIVE_LINE%%echo*}echo \"\$d\"")"
-[ "$COPY_ROOT" = "$(cd -P "$SKILL_DIR" && pwd)" ] \
-  || fail "--copy 에서 SKILL_ROOT 유도 실패: '$COPY_ROOT' (#144 회귀)"
+# SKILL.md 의 SKILL_ROOT= 블록을 글자 그대로 떼어 실행한다(복붙 사본과 어긋나지 않게).
+DERIVE_BLOCK="$(awk '/^SKILL_ROOT="\$\(/{f=1} f{print} f&&/"\)"$/{exit}' "$REPO/skills/humanize-korean/SKILL.md")"
+[ -n "$DERIVE_BLOCK" ] || fail "SKILL.md 에서 SKILL_ROOT 유도 블록을 찾지 못함"
+derive() { CLAUDE_SKILL_DIR="$1" bash -c "$DERIVE_BLOCK"'; echo "$SKILL_ROOT"'; }
+EXPECT="$(cd -P "$SKILL_DIR" && pwd)"
+for s in humanize-korean humanize humanize-scan humanize-redo; do
+  got="$(derive "$CLAUDE_HOME/skills/$s")"
+  [ "$got" = "$EXPECT" ] || fail "--copy 에서 $s 진입 시 SKILL_ROOT 유도 실패: '$got' (#144 회귀)"
+done
+COPY_ROOT="$EXPECT"
 WORK2="$TMP/work2"; mkdir -p "$WORK2"
 ( cd "$WORK2" && python3 "$COPY_ROOT/scripts/prepare_monolith_input.py" \
     --run-dir _workspace/copy-001 \
